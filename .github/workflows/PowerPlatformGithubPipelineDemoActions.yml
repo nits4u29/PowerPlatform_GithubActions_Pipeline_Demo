@@ -1,1 +1,67 @@
+name: Power Platform ALM Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
 jobs:
+  powerplatform-alm:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install Power Platform CLI
+      run: |
+        npm install -g pac
+
+    - name: Authenticate to Power Platform (Dev)
+      run: |
+        pac auth create --name dev --url ${{ secrets.DEV_ENV_URL }} \
+          --applicationId ${{ secrets.CLIENT_ID }} \
+          --clientSecret ${{ secrets.CLIENT_SECRET }} \
+          --tenant ${{ secrets.TENANT_ID }}
+
+    - name: Export Solution from Dev
+      run: |
+        mkdir solutions/export
+        pac solution export --name MigrationUsingGithubActionsFrom200to400 \
+          --path solutions/export/MigrationUsingGithubActionsFrom200to400.zip \
+          --managed false
+
+    - name: Unpack Solution to Source
+      run: |
+        pac solution unpack \
+          --zipfile solutions/export/MigrationUsingGithubActionsFrom200to400.zip \
+          --folder solutions/MigrationUsingGithubActionsFrom200to400 \
+          --packagetype Unmanaged
+
+    - name: Commit solution to Git (optional)
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add solutions/
+        git commit -m "Updated solution source"
+        git push
+
+    - name: Authenticate to Power Platform (PROD)
+      run: |
+        pac auth create --name uat --url ${{ secrets.PROD_ENV_URL }} \
+          --applicationId ${{ secrets.CLIENT_ID }} \
+          --clientSecret ${{ secrets.CLIENT_SECRET }} \
+          --tenant ${{ secrets.TENANT_ID }}
+
+    - name: Pack Solution as Managed
+      run: |
+        pac solution pack \
+          --folder solutions/MigrationUsingGithubActionsFrom200to400 \
+          --zipfile solutions/export/MigrationUsingGithubActionsFrom200to400_managed.zip \
+          --packagetype Managed
+
+    - name: Import to PROD
+      run: |
+        pac solution import \
+          --path solutions/export/MigrationUsingGithubActionsFrom200to400_managed.zip \
+          --force overwrite \
+          --publish true
